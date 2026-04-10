@@ -1,4 +1,4 @@
-name: Frontend Deploy to Azure App Service
+name: Frontend Build and push to ACR
 
 on:
   push:
@@ -9,33 +9,37 @@ on:
       - ".github/workflows/front-deploy.yml"
   workflow_dispatch:
 
+env:
+  IMAGE_NAME: cloud-doc-frontend
+
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v2
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: src/front/package-lock.json
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: src/front
+      - name: Docker Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src/front
+          push: true
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
 
-      - name: Build
-        run: npm run build
-        working-directory: src/front
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-
-      - name: Deploy to Azure App Service
+      - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ secrets.AZURE_FRONT_APP_NAME }}
+          images: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           publish-profile: ${{ secrets.AZURE_FRONT_PUBLISH_PROFILE }}
-          package: src/front
