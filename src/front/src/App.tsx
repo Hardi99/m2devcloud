@@ -3,7 +3,7 @@ import * as signalR from '@microsoft/signalr'
 import './App.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:80'
-const FUNCTIONS_URL = import.meta.env.VITE_FUNCTIONS_URL || ''
+const FUNCTIONS_URL = import.meta.env.VITE_FUNCTIONS_URL || 'https://tabuna-function-anhkhff5h0asdph8.francecentral-01.azurewebsites.net'
 
 type JobStatus = 'idle' | 'creating' | 'uploading' | 'connecting' | 'waiting' | 'done' | 'error'
 
