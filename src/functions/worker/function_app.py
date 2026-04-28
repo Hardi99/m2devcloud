@@ -8,7 +8,7 @@ from azure.servicebus import ServiceBusClient, ServiceBusMessage
 from azure.cosmos import CosmosClient, exceptions
 from openai import OpenAI
 
-app = func.FunctionApp()
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 EXTENSION_TAGS = {
     ".pdf": ["pdf", "document"],
@@ -69,13 +69,36 @@ def get_cosmos_container():
     return client.get_database_client("db-docs").get_container_client("jobs")
 
 
+def signalr_message(document_id: str, status: str, message: str, extra: dict = None) -> str:
+    payload = {"documentId": document_id, "status": status, "message": message}
+    if extra:
+        payload.update(extra)
+    return json.dumps({"target": "documentStatus", "arguments": [payload]})
+
+
+@app.route(route="negotiate", methods=["GET", "POST"])
+@app.generic_input_binding(
+    arg_name="connectionInfo",
+    type="signalRConnectionInfo",
+    hubName="documents",
+    connectionStringSetting="AzureSignalRConnectionString"
+)
+def negotiate(req: func.HttpRequest, connectionInfo) -> func.HttpResponse:
+    return func.HttpResponse(connectionInfo, mimetype="application/json")
+
+
 @app.blob_trigger(
     arg_name="myblob",
     path="docstoragetabuna/input/{name}",
     connection="docstoragetabuna_STORAGE"
 )
-def blob_upload_worker(myblob: func.InputStream):
-    # blob path: docstoragetabuna/input/{documentId}_{fileName}
+@app.generic_output_binding(
+    arg_name="signalrMessages",
+    type="signalR",
+    hubName="documents",
+    connectionStringSetting="AzureSignalRConnectionString"
+)
+def blob_upload_worker(myblob: func.InputStream, signalrMessages: func.Out[str]):
     file_part = myblob.name.split("/")[-1]
     document_id, file_name = file_part.split("_", 1)
 
@@ -94,6 +117,7 @@ def blob_upload_worker(myblob: func.InputStream):
         with client.get_queue_sender(queue_name) as sender:
             sender.send_messages(ServiceBusMessage(json.dumps(message_body)))
 
+    signalrMessages.set(signalr_message(document_id, "UPLOADED", "Fichier reçu"))
     logging.info(f"Message envoyé dans Service Bus pour le document {document_id}")
 
 
@@ -102,7 +126,13 @@ def blob_upload_worker(myblob: func.InputStream):
     queue_name="document-queue",
     connection="ServiceBusConnection"
 )
-def service_bus_worker(msg: func.ServiceBusMessage):
+@app.generic_output_binding(
+    arg_name="signalrMessages",
+    type="signalR",
+    hubName="documents",
+    connectionStringSetting="AzureSignalRConnectionString"
+)
+def service_bus_worker(msg: func.ServiceBusMessage, signalrMessages: func.Out[str]):
     body = msg.get_body().decode("utf-8")
     data = json.loads(body)
 
@@ -117,6 +147,7 @@ def service_bus_worker(msg: func.ServiceBusMessage):
     if size == 0:
         logging.warning(f"Document {document_id} est vide")
         container.upsert_item({"id": document_id, "pk": "JOB", "fileName": file_name, "status": "ERROR"})
+        signalrMessages.set(signalr_message(document_id, "ERROR", "Fichier vide"))
         return
 
     try:
@@ -124,7 +155,12 @@ def service_bus_worker(msg: func.ServiceBusMessage):
     except exceptions.CosmosResourceNotFoundError:
         logging.warning(f"Document {document_id} introuvable dans Cosmos DB")
         container.upsert_item({"id": document_id, "pk": "JOB", "fileName": file_name, "status": "ERROR"})
+        signalrMessages.set(signalr_message(document_id, "ERROR", "Document introuvable"))
         return
+
+    doc["status"] = "PROCESSING"
+    container.replace_item(item=document_id, body=doc)
+    signalrMessages.set(signalr_message(document_id, "PROCESSING", "Traitement IA en cours"))
 
     tags = generate_tags(file_name)
     doc["status"] = "PROCESSED"
@@ -132,4 +168,5 @@ def service_bus_worker(msg: func.ServiceBusMessage):
     doc["processedAt"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     container.replace_item(item=document_id, body=doc)
+    signalrMessages.set(signalr_message(document_id, "PROCESSED", "Tagging terminé", {"tags": tags}))
     logging.info(f"Document {document_id} traité avec les tags : {tags}")
