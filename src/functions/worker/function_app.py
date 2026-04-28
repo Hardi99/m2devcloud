@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import azure.functions as func
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
 from azure.cosmos import CosmosClient, exceptions
+from openai import OpenAI
 
 app = func.FunctionApp()
 
@@ -24,7 +25,7 @@ KEYWORD_TAGS = {
 }
 
 
-def generate_tags(file_name: str) -> list:
+def generate_tags_fallback(file_name: str) -> list:
     tags = set()
     name_lower = file_name.lower()
     if "." in name_lower:
@@ -34,6 +35,33 @@ def generate_tags(file_name: str) -> list:
         if keyword in name_lower:
             tags.update(keyword_tags)
     return sorted(tags)
+
+
+def generate_tags_ia(file_name: str) -> list:
+    client = OpenAI(api_key=os.environ["OpenAIApiKey"])
+    prompt = (
+        f"Analyse le nom de fichier suivant et génère entre 3 et 8 tags courts en français.\n"
+        f"Nom du fichier : {file_name}\n\n"
+        f"Retourne uniquement un tableau JSON de chaînes, sans texte autour."
+    )
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+    raw = response.choices[0].message.content.strip()
+    tags = json.loads(raw)
+    return sorted([t.lower() for t in tags if isinstance(t, str)])
+
+
+def generate_tags(file_name: str) -> list:
+    try:
+        tags = generate_tags_ia(file_name)
+        logging.info(f"Tags IA générés : {tags}")
+        return tags
+    except Exception as e:
+        logging.warning(f"Appel IA échoué, fallback sur les règles : {e}")
+        return generate_tags_fallback(file_name)
 
 
 def get_cosmos_container():
