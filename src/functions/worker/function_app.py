@@ -76,7 +76,15 @@ def signalr_message(document_id: str, status: str, message: str, extra: dict = N
     return json.dumps({"target": "documentStatus", "arguments": [payload]})
 
 
-@app.route(route="negotiate", methods=["GET", "POST"])
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "https://tabuna-front-afg8fsbbbjh9g0gz.francecentral-01.azurewebsites.net",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, x-requested-with, x-ms-signalr-userid",
+}
+
+
+@app.route(route="negotiate", methods=["GET", "POST", "OPTIONS"])
 @app.generic_input_binding(
     arg_name="connectionInfo",
     type="signalRConnectionInfo",
@@ -84,7 +92,9 @@ def signalr_message(document_id: str, status: str, message: str, extra: dict = N
     connectionStringSetting="AzureSignalRConnectionString"
 )
 def negotiate(req: func.HttpRequest, connectionInfo) -> func.HttpResponse:
-    return func.HttpResponse(connectionInfo, mimetype="application/json")
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=200, headers=CORS_HEADERS)
+    return func.HttpResponse(connectionInfo, mimetype="application/json", headers=CORS_HEADERS)
 
 
 @app.blob_trigger(
