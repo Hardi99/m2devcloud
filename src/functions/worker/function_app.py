@@ -43,14 +43,13 @@ def get_cosmos_container():
 
 @app.blob_trigger(
     arg_name="myblob",
-    path="docstoragetabuna/input/{folder}/{name}",
+    path="docstoragetabuna/input/{name}",
     connection="docstoragetabuna_STORAGE"
 )
 def blob_upload_worker(myblob: func.InputStream):
-    # blob path: docstoragetabuna/input/{uuid}/{fileName}
-    parts = myblob.name.split("/")
-    document_id = parts[-2]
-    file_name = parts[-1]
+    # blob path: docstoragetabuna/input/{documentId}_{fileName}
+    file_part = myblob.name.split("/")[-1]
+    document_id, file_name = file_part.split("_", 1)
 
     message_body = {
         "documentId": document_id,
