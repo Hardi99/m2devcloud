@@ -5,8 +5,8 @@
             "name": "inputblob",
             "type": "blobTrigger",
             "direction": "in",
-            "path": "doc-storage/input/{name}",
-            "connection": "docstorageprof_STORAGE"
+            "path": "docstoragetabuna/input/{name}",
+            "connection": "docstoragetabuna_STORAGE"
         }
     ]
 }
