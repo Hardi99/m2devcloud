@@ -65,3 +65,5 @@ jobs:
           slot-name: 'Production'
           package: release.zip
           publish-profile: ${{ secrets.FUNCTION_PUBLISH_PROFILE }}
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
