@@ -56,14 +56,14 @@ def main(msg: func.ServiceBusMessage):
 
     if size == 0:
         logging.warning(f"Document {document_id} est vide")
-        container.upsert_item({"id": document_id, "fileName": file_name, "status": "ERROR"})
+        container.upsert_item({"id": document_id, "pk": "JOB", "fileName": file_name, "status": "ERROR"})
         return
 
     try:
-        doc = container.read_item(item=document_id, partition_key=document_id)
+        doc = container.read_item(item=document_id, partition_key="JOB")
     except exceptions.CosmosResourceNotFoundError:
         logging.warning(f"Document {document_id} introuvable dans Cosmos DB")
-        container.upsert_item({"id": document_id, "fileName": file_name, "status": "ERROR"})
+        container.upsert_item({"id": document_id, "pk": "JOB", "fileName": file_name, "status": "ERROR"})
         return
 
     tags = generate_tags(file_name)

@@ -8,17 +8,15 @@ from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
 
 def main(myblob: func.InputStream):
-    blob_name = myblob.name  # ex: docstoragetabuna/input/123_cv_amine_azure.pdf
-    file_part = blob_name.split("/")[-1]  # ex: 123_cv_amine_azure.pdf
-
-    parts = file_part.split("_", 1)
-    document_id = parts[0]
-    file_name = parts[1] if len(parts) > 1 else file_part
+    # blob_name ex: docstoragetabuna/input/abc-uuid/cv_amine.pdf
+    parts = myblob.name.split("/")
+    document_id = parts[-2]
+    file_name = parts[-1]
 
     message_body = {
         "documentId": document_id,
         "fileName": file_name,
-        "blobName": blob_name,
+        "blobName": myblob.name,
         "size": myblob.length,
         "uploadedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
