@@ -25,10 +25,10 @@ lint-functions:
 
 lint-frontend:
   stage: lint
-  image: node:20-alpine
+  image: node:22-alpine
   script:
     - cd src/front
-    - npm ci --silent
+    - npm ci
     - npm run lint
 
 # ─── BUILD ───────────────────────────────────────────────────────────────────
