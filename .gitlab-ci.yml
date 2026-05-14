@@ -28,7 +28,7 @@ lint-frontend:
   image: node:22-alpine
   script:
     - cd src/front
-    - npm ci
+    - npm install
     - npm run lint
 
 # ─── BUILD ───────────────────────────────────────────────────────────────────
