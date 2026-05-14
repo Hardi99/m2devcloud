@@ -138,3 +138,15 @@ infra/arm/*.deployment.json
 tmp/
 temp/
 .cache/
+
+############################################
+# Images
+############################################
+
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.svg
+*.webp
