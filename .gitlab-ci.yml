@@ -1,0 +1,122 @@
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+stages:
+  - lint
+  - build
+  - deploy
+
+variables:
+  FUNCTIONS_PATH: "src/functions/worker"
+  FRONT_IMAGE: cloud-doc-frontend
+  API_IMAGE: cloud-doc-api
+
+# ─── LINT ────────────────────────────────────────────────────────────────────
+
+lint-functions:
+  stage: lint
+  image: python:3.12-slim
+  script:
+    - pip install --quiet -r $FUNCTIONS_PATH/requirements.txt
+    - pip install --quiet flake8
+    - flake8 $FUNCTIONS_PATH/function_app.py --max-line-length=120
+
+lint-frontend:
+  stage: lint
+  image: node:20-alpine
+  script:
+    - cd src/front
+    - npm ci --silent
+    - npm run lint
+
+# ─── BUILD ───────────────────────────────────────────────────────────────────
+
+build-frontend:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  script:
+    - docker login "$ACR_LOGIN_SERVER" -u "$ACR_USERNAME" -p "$ACR_PASSWORD"
+    - |
+      docker build \
+        --build-arg VITE_API_URL="$VITE_API_URL" \
+        --build-arg VITE_FUNCTIONS_URL="$VITE_FUNCTIONS_URL" \
+        -t "$ACR_LOGIN_SERVER/$FRONT_IMAGE:$CI_COMMIT_SHA" \
+        -t "$ACR_LOGIN_SERVER/$FRONT_IMAGE:latest" \
+        ./src/front
+    - docker push "$ACR_LOGIN_SERVER/$FRONT_IMAGE:$CI_COMMIT_SHA"
+    - docker push "$ACR_LOGIN_SERVER/$FRONT_IMAGE:latest"
+
+build-api:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  script:
+    - docker login "$ACR_LOGIN_SERVER" -u "$ACR_USERNAME" -p "$ACR_PASSWORD"
+    - |
+      docker build \
+        -t "$ACR_LOGIN_SERVER/$API_IMAGE:$CI_COMMIT_SHA" \
+        -t "$ACR_LOGIN_SERVER/$API_IMAGE:latest" \
+        ./src/api
+    - docker push "$ACR_LOGIN_SERVER/$API_IMAGE:$CI_COMMIT_SHA"
+    - docker push "$ACR_LOGIN_SERVER/$API_IMAGE:latest"
+
+# ─── DEPLOY ──────────────────────────────────────────────────────────────────
+
+deploy-functions:
+  stage: deploy
+  image: mcr.microsoft.com/azure-cli
+  before_script:
+    - apk add --no-cache zip
+  script:
+    - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
+    - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+    - cd "$FUNCTIONS_PATH" && zip -r /tmp/function.zip .
+    - |
+      az functionapp deployment source config-zip \
+        --resource-group "$AZURE_RESOURCE_GROUP" \
+        --name "$AZURE_FUNCTION_APP_NAME" \
+        --src /tmp/function.zip \
+        --build-remote true
+
+deploy-frontend:
+  stage: deploy
+  image: mcr.microsoft.com/azure-cli
+  needs:
+    - job: build-frontend
+  script:
+    - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
+    - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+    - |
+      az webapp config container set \
+        --name "$AZURE_FRONT_APP_NAME" \
+        --resource-group "$AZURE_WEB_APP_RESOURCE_GROUP" \
+        --docker-custom-image-name "$ACR_LOGIN_SERVER/$FRONT_IMAGE:$CI_COMMIT_SHA" \
+        --docker-registry-server-url "https://$ACR_LOGIN_SERVER" \
+        --docker-registry-server-user "$ACR_USERNAME" \
+        --docker-registry-server-password "$ACR_PASSWORD"
+
+deploy-api:
+  stage: deploy
+  image: mcr.microsoft.com/azure-cli
+  needs:
+    - job: build-api
+  script:
+    - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
+    - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+    - |
+      az webapp config container set \
+        --name "$AZURE_API_APP_NAME" \
+        --resource-group "$AZURE_WEB_APP_RESOURCE_GROUP" \
+        --docker-custom-image-name "$ACR_LOGIN_SERVER/$API_IMAGE:$CI_COMMIT_SHA" \
+        --docker-registry-server-url "https://$ACR_LOGIN_SERVER" \
+        --docker-registry-server-user "$ACR_USERNAME" \
+        --docker-registry-server-password "$ACR_PASSWORD"

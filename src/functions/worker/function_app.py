@@ -127,6 +127,14 @@ def blob_upload_worker(myblob: func.InputStream, signalrMessages: func.Out[str])
         with client.get_queue_sender(queue_name) as sender:
             sender.send_messages(ServiceBusMessage(json.dumps(message_body)))
 
+    container = get_cosmos_container()
+    try:
+        doc = container.read_item(item=document_id, partition_key="JOB")
+        doc["status"] = "QUEUED"
+        container.replace_item(item=document_id, body=doc)
+    except Exception as e:
+        logging.warning(f"Impossible de mettre à jour le statut QUEUED pour {document_id}: {e}")
+
     signalrMessages.set(signalr_message(document_id, "UPLOADED", "Fichier reçu"))
     logging.info(f"Message envoyé dans Service Bus pour le document {document_id}")
 
@@ -180,3 +188,40 @@ def service_bus_worker(msg: func.ServiceBusMessage, signalrMessages: func.Out[st
     container.replace_item(item=document_id, body=doc)
     signalrMessages.set(signalr_message(document_id, "PROCESSED", "Tagging terminé", {"tags": tags}))
     logging.info(f"Document {document_id} traité avec les tags : {tags}")
+
+
+@app.service_bus_queue_trigger(
+    arg_name="deadMsg",
+    queue_name="document-queue/$deadletterqueue",
+    connection="ServiceBusConnection"
+)
+@app.generic_output_binding(
+    arg_name="signalrDlq",
+    type="signalR",
+    hubName="documents",
+    connectionStringSetting="AzureSignalRConnectionString"
+)
+def dlq_alert_worker(deadMsg: func.ServiceBusMessage, signalrDlq: func.Out[str]):
+    body = deadMsg.get_body().decode("utf-8")
+    try:
+        data = json.loads(body)
+        document_id = data.get("documentId", "inconnu")
+        file_name = data.get("fileName", "")
+    except Exception:
+        document_id = "inconnu"
+        file_name = ""
+
+    reason = deadMsg.dead_letter_reason or "Echecs répétés"
+    error_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    container = get_cosmos_container()
+    container.upsert_item({
+        "id": document_id,
+        "pk": "JOB",
+        "fileName": file_name,
+        "status": "ERROR",
+        "errorMessage": f"Message envoyé en DLQ après plusieurs échecs : {reason}",
+        "errorAt": error_at,
+    })
+    signalrDlq.set(signalr_message(document_id, "ERROR", f"Erreur DLQ : {reason}"))
+    logging.info(f"Message DLQ traité pour le document {document_id} : {reason}")

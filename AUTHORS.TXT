@@ -1,0 +1,10 @@
+Hardi TABUNA
+- Tagging IA (OpenAI gpt-4o-mini avec fallback par règles)
+- Notifications temps réel Azure SignalR (negotiate endpoint, output bindings, frontend React)
+- Configuration Azure Functions (Blob Trigger, Service Bus Trigger, DLQ Alert)
+- Pipeline GitLab CI/CD
+
+ibtissam EL HANY
+- Dead Letter Queue (configuration Service Bus maxDeliveryCount)
+- README et documentation du projet
+- Schéma architecture
