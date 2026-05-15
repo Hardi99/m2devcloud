@@ -74,12 +74,18 @@ build-api:
 deploy-functions:
   stage: deploy
   image: mcr.microsoft.com/azure-cli
-  before_script:
-    - apk add --no-cache zip
   script:
     - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
     - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
-    - cd "$FUNCTIONS_PATH" && zip -r /tmp/function.zip .
+    - |
+      cd "$FUNCTIONS_PATH"
+      python3 -c "
+      import zipfile, os
+      with zipfile.ZipFile('/tmp/function.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
+          for root, dirs, files in os.walk('.'):
+              for f in files:
+                  zf.write(os.path.join(root, f))
+      "
     - |
       az functionapp deployment source config-zip \
         --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -97,12 +103,12 @@ deploy-frontend:
     - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
     - |
       az webapp config container set \
-        --name "$AZURE_FRONT_APP_NAME" \
+        --name "tabuna-front" \
         --resource-group "$AZURE_WEB_APP_RESOURCE_GROUP" \
-        --docker-custom-image-name "$ACR_LOGIN_SERVER/$FRONT_IMAGE:$CI_COMMIT_SHA" \
-        --docker-registry-server-url "https://$ACR_LOGIN_SERVER" \
-        --docker-registry-server-user "$ACR_USERNAME" \
-        --docker-registry-server-password "$ACR_PASSWORD"
+        --container-image-name "$ACR_LOGIN_SERVER/$FRONT_IMAGE:$CI_COMMIT_SHA" \
+        --container-registry-url "https://$ACR_LOGIN_SERVER" \
+        --container-registry-user "$ACR_USERNAME" \
+        --container-registry-password "$ACR_PASSWORD"
 
 deploy-api:
   stage: deploy
@@ -114,9 +120,9 @@ deploy-api:
     - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
     - |
       az webapp config container set \
-        --name "$AZURE_API_APP_NAME" \
+        --name "tabuna-api" \
         --resource-group "$AZURE_WEB_APP_RESOURCE_GROUP" \
-        --docker-custom-image-name "$ACR_LOGIN_SERVER/$API_IMAGE:$CI_COMMIT_SHA" \
-        --docker-registry-server-url "https://$ACR_LOGIN_SERVER" \
-        --docker-registry-server-user "$ACR_USERNAME" \
-        --docker-registry-server-password "$ACR_PASSWORD"
+        --container-image-name "$ACR_LOGIN_SERVER/$API_IMAGE:$CI_COMMIT_SHA" \
+        --container-registry-url "https://$ACR_LOGIN_SERVER" \
+        --container-registry-user "$ACR_USERNAME" \
+        --container-registry-password "$ACR_PASSWORD"
