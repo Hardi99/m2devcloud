@@ -162,7 +162,7 @@ def service_bus_worker(msg: func.ServiceBusMessage, signalrMessages: func.Out[st
 
     container = get_cosmos_container()
 
-    if size == 0:
+    if not size:
         logging.warning(f"Document {document_id} est vide")
         container.upsert_item({"id": document_id, "pk": "JOB", "fileName": file_name, "status": "ERROR"})
         signalrMessages.set(signalr_message(document_id, "ERROR", "Fichier vide"))
