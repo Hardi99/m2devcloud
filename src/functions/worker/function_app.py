@@ -73,7 +73,7 @@ def signalr_message(document_id: str, status: str, message: str, extra: dict = N
     payload = {"documentId": document_id, "status": status, "message": message}
     if extra:
         payload.update(extra)
-    return json.dumps({"target": "documentStatus", "arguments": [payload]})
+    return json.dumps({"target": "documentStatus", "userId": document_id, "arguments": [payload]})
 
 
 CORS_HEADERS = {
@@ -89,6 +89,7 @@ CORS_HEADERS = {
     arg_name="connectionInfo",
     type="signalRConnectionInfo",
     hubName="documents",
+    userId="{query.userId}",
     connectionStringSetting="AzureSignalRConnectionString"
 )
 def negotiate(req: func.HttpRequest, connectionInfo) -> func.HttpResponse:

@@ -42,7 +42,7 @@ export default function App() {
 
   const startSignalR = (id: string) => {
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${FUNCTIONS_URL}/api`)
+      .withUrl(`${FUNCTIONS_URL}/api?userId=${id}`)
       .withAutomaticReconnect()
       .build()
 
